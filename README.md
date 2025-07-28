@@ -1,3 +1,11 @@
+<h1 align="center">Add Simple Web Server</h1>
+
+I add the simple webserver to test model more convenient.
+```bash
+python example/server.py
+```
+After model totally loaded, you can visit the web <i>http://localhost:5000</i> to test model.
+
 <h1 align="center">Add quantization（4bit）and fix bugs in higher version <i>transformer</i></h1>
 
 The enviroment of my computer: 

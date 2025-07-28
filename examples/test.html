@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Fork</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .loading {
+            display: none;
+            margin-top: 10px;
+            color: #666;
+        }
+        .error {
+            color: #d9534f;
+        }
+        .success {
+            color: #5cb85c;
+        }
+        .base64-preview {
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>表单上传示例（Base64编码）</h1>
+    <form id="uploadForm">
+        <div class="form-group">
+            <label for="text1">Transcript:</label>
+            <input type="text" id="Transcript" name="InputText" placeholder="Please input transcript!" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="text2">SencePrompt:</label>
+            <input type="text" id="SencePrompt" name="InputText" placeholder="Please input SencePrompt." >
+        </div>
+        <div class="form-group">
+            <label for="text3">AudioTranscript:</label>
+            <input type="text" id="AudioTranscript" name="InputText" placeholder="Please input AudioTranscript." required>
+        </div>
+        
+        <div class="form-group">
+            <label for="file">Audio File select:</label>
+            <input type="file" id="file" name="file" required>
+            <div id="base64Preview" class="base64-preview" style="display:none;">
+                <p><strong>Base64 preview:</strong></p>
+                <span id="base64Sample"></span>
+            </div>
+        </div>
+        
+        <button type="submit">Update</button>
+        <div id="loading" class="loading">Updating please wait!</div>
+    </form>
+    
+    <div id="result"></div>
+    <audio id="audioPlayer" controls></audio>
+    <script>
+        // 文件选择时显示Base64预览
+        document.getElementById('file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const previewDiv = document.getElementById('base64Preview');
+            const sampleSpan = document.getElementById('base64Sample');
+            
+            if (!file) {
+                previewDiv.style.display = 'none';
+                return;
+            }
+            
+            previewDiv.style.display = 'block';
+            sampleSpan.textContent = '读取中...';
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const base64String = event.target.result.split(',')[1]; // 去掉data:前缀
+                sampleSpan.textContent = base64String.substring(0, 200) + 
+                    (base64String.length > 200 ? '...' : '');
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // 表单提交处理
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const form = e.target;
+            const resultDiv = document.getElementById('result');
+            const loadingDiv = document.getElementById('loading');
+            const fileInput = document.getElementById('file');
+            
+            // 显示加载状态
+            loadingDiv.style.display = 'block';
+            resultDiv.innerHTML = '';
+            
+            try {
+                const Transcript = document.getElementById('Transcript').value;
+                const SencePrompt = document.getElementById('SencePrompt').value;
+                const AudioTranscript = document.getElementById('AudioTranscript').value;
+                const file = fileInput.files[0];
+                
+                if (!file) {
+                    throw new Error('请选择一个文件');
+                }
+                
+                // 将文件转换为Base64
+                const fileBase64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = error => reject(error);
+                    reader.readAsDataURL(file);
+                });
+                const sampleSpan = document.getElementById('base64Sample');
+                // 准备要发送的数据
+                const payload = {
+                    Transcript,
+                    SencePrompt,
+                    AudioTranscript,
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: file.size,
+                    fileBase64
+                };
+                sampleSpan.textContent = JSON.stringify(payload);
+                // 使用fetch API发送POST请求
+                const response = await fetch('http://192.168.1.104:5000/api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+			        body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`服务器返回错误: ${response.status}`);
+                }
+                
+                const { audioData } = await response.json();
+
+                // 直接设置 <audio> 的 src
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.src = audioData;
+                audioPlayer.controls = true;
+                
+            } catch (error) {
+                // 显示错误信息
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>上传失败</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+                console.error('上传错误:', error);
+            } finally {
+                // 隐藏加载状态
+                loadingDiv.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
