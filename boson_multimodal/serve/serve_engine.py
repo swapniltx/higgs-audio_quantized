@@ -24,10 +24,12 @@ from ..audio_processing.higgs_audio_tokenizer import load_higgs_audio_tokenizer
 
 
 BNB_CONF = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.float16
+    # load_in_4bit=True,
+    # bnb_4bit_use_double_quant=True,
+    # bnb_4bit_quant_type="nf4",
+    # bnb_4bit_compute_dtype=torch.float16
+    load_in_8bit=True,
+    llm_int8_threshold=0.0,
 )
 
 @dataclass
@@ -217,6 +219,27 @@ class HiggsAudioServeEngine:
         self.device = device
         self.model_name_or_path = model_name_or_path
         self.torch_dtype = torch_dtype
+
+        if isinstance(self.device, str) and self.device.startswith("cuda"):
+            if not torch.cuda.is_available():
+                raise RuntimeError("CUDA device requested but CUDA is not available.")
+            visible_devices = torch.cuda.device_count()
+            if visible_devices == 0:
+                raise RuntimeError("No CUDA devices are visible to PyTorch.")
+            requested_idx = 0
+            if ":" in self.device:
+                try:
+                    requested_idx = int(self.device.split(":", 1)[1])
+                except ValueError:
+                    requested_idx = 0
+            if requested_idx >= visible_devices:
+                logger.warning(
+                    f"Requested CUDA device index {requested_idx} is not available; falling back to index 0 from {visible_devices} visible device(s)."
+                )
+                requested_idx = 0
+                self.device = f"cuda:{requested_idx}"
+            torch.cuda.set_device(requested_idx)
+            device = self.device
 
         # Initialize model and tokenizer
         if quantization:
